@@ -1,70 +1,131 @@
-# FlowDesk ⚡
-> Voice-first AI workflow assistant powered by DeepSeek + CrewAI on AMD MI300X
+# FlowDesk
 
-## Architecture
+FlowDesk is a voice-first workflow assistant for personal ops tasks like reading email, staging outgoing messages, checking calendars, and saving reusable automations.
+
+## Concept
+
+The core control flow is:
+
+```text
+Voice/Text -> Intent Router -> Status Check | One-Time Task | Workflow Save
+                               |                  |
+                               |                  -> Approval Gate for write actions
+                               |
+                               -> Direct execution for read-only actions
 ```
-Voice → Intent Router → Task Agent ──→ Gmail / Calendar
-                     → Workflow Agent → Saved Workflows
-                     ↓
-              Approval Gate UI → Execute
+
+Two rules matter:
+
+1. Read-only actions should execute immediately with no approval step.
+2. Write actions like sending email or creating calendar events must be staged for approval.
+
+The original repo depended on free-form LLM output for this control flow. That caused unstable behavior. The current version keeps the routing deterministic and uses the LLM server as supporting infrastructure rather than as the source of truth for approvals.
+
+## Current State
+
+- Backend is runnable from the repo root.
+- Frontend is scaffolded with Vite from the repo root.
+- Gmail and Calendar are still stub tools. You need to replace them with real Gmail or calendar integrations to get live data.
+- AMD MI300X / ROCm vLLM settings are aligned around `http://localhost:8000/v1`.
+
+## Files
+
+- [crew.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/crew.py): Intent routing and task execution logic
+- [main.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/main.py): FastAPI API and approval queue
+- [App.jsx](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/App.jsx): React UI
+- [main.jsx](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/main.jsx): React entrypoint
+- [serve.sh](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/serve.sh): AMD/vLLM server launcher
+
+## Setup On Your AMD GPU Droplet
+
+### 1. Python environment
+
+```bash
+python3 -m venv flowenv
+source flowenv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
 ```
 
-## Stack
-- **LLM**: DeepSeek-R1-Distill-Llama-8B via vLLM (ROCm)
-- **Agents**: CrewAI (multi-agent orchestration)
-- **Compute**: AMD MI300X / ROCm on AMD Developer Cloud
-- **Backend**: FastAPI
-- **Frontend**: React + Web Speech API
+### 2. Install ROCm vLLM
 
----
-
-## Setup on AMD Developer Cloud
-
-### 1. Install ROCm vLLM
 ```bash
 pip install vllm --extra-index-url https://download.pytorch.org/whl/rocm6.1
 ```
 
-### 2. Start LLM Server (MI300X optimized)
+### 3. Start the model server
+
 ```bash
-chmod +x backend/serve.sh
-./backend/serve.sh
-# Model auto-downloads from HuggingFace (~16GB)
+chmod +x serve.sh
+./serve.sh
 ```
 
-### 3. Start Backend
+This serves an OpenAI-compatible API on `http://localhost:8000/v1`.
+
+### 4. Start the backend
+
 ```bash
-cd backend
-pip install -r requirements.txt
-python api/main.py
+python3 main.py
 ```
 
-### 4. Start Frontend
+The backend listens on `http://0.0.0.0:8080`.
+
+### 5. Start the frontend
+
 ```bash
-cd frontend
 npm install
 npm run dev
 ```
 
----
+The UI listens on `http://0.0.0.0:5173`.
 
-## Key Files
+## Test The Backend
+
+Read-only request:
+
+```bash
+curl -X POST http://localhost:8080/ask \
+  -H "Content-Type: application/json" \
+  -d '{"text": "summarize my emails from today"}'
 ```
-backend/
-  serve.sh          # vLLM server (MI300X optimized)
-  agents/crew.py    # CrewAI agents (Router, Task, Workflow)
-  api/main.py       # FastAPI + approval queue
-frontend/
-  src/App.jsx       # React UI + voice + approval cards
+
+Expected behavior now:
+
+- `route` should be `status_check`
+- `pending_approvals` should be empty
+- `summary` should explain that FlowDesk built a Gmail read query and that Gmail is still stubbed
+
+Write request:
+
+```bash
+curl -X POST http://localhost:8080/ask \
+  -H "Content-Type: application/json" \
+  -d '{"text": "send Alex an email about the roadmap update"}'
 ```
 
-## AMD MI300X Optimizations
-- `PYTORCH_ROCM_ARCH=gfx942` targets MI300X specifically
-- `float16` dtype for max throughput
-- `gpu-memory-utilization=0.85` — safe ceiling for 192GB HBM3
-- `tensor-parallel-size=1` — single GPU sufficient for 8B model
+Expected behavior:
 
-## Extending
-- Wire real Gmail/Calendar: replace stub tools in `agents/crew.py` with MCP calls
-- Add Supabase: swap `approval_queue` dict with Supabase client
-- Add more agents: Slack, Notion, Linear — each is one new `@tool` function
+- `route` should be `one_time_task`
+- `pending_approvals` should contain a `gmail_send` payload
+
+## Environment Variables
+
+Optional overrides:
+
+```bash
+export FLOWDESK_LLM_MODEL=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+export FLOWDESK_LLM_BASE_URL=http://localhost:8000/v1
+export FLOWDESK_LLM_API_KEY=unused
+export FLOWDESK_LLM_PORT=8000
+```
+
+## Next Step To Make It Real
+
+Replace the stub tools in [crew.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/crew.py) with real integrations:
+
+- `gmail_read`
+- `gmail_send`
+- `calendar_read`
+- `calendar_create`
+
+That is the missing piece between a demo control plane and a functioning assistant.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const API = "http://localhost:8080";
+const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 // ── VOICE HOOK ───────────────────────────────────────────────────────────────
 function useVoice(onTranscript) {
@@ -58,7 +58,10 @@ function WorkflowChip({ wf, onDelete }) {
 export default function FlowDesk() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hey! I'm FlowDesk. Tell me what to do — send emails, schedule meetings, or build workflows. You can speak or type." }
+    {
+      role: "assistant",
+      text: "FlowDesk routes requests into read-only checks, one-time actions, or reusable workflows. Write actions are staged for approval; read-only actions run directly.",
+    }
   ]);
   const [approvals, setApprovals] = useState([]);
   const [workflows, setWorkflows] = useState([]);
@@ -92,7 +95,7 @@ export default function FlowDesk() {
       setWorkflows(data.workflows || []);
       speak(reply.slice(0, 200));
     } catch {
-      setMessages(m => [...m, { role: "assistant", text: "⚠️ Backend offline. Start the FastAPI server." }]);
+      setMessages(m => [...m, { role: "assistant", text: "Backend offline. Start the FastAPI server on port 8080." }]);
     }
     setLoading(false);
   };

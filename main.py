@@ -1,9 +1,11 @@
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from agents.crew import run_flowdesk
-import uuid, json
-from datetime import datetime
+
+from crew import run_flowdesk
 
 app = FastAPI(title="FlowDesk API")
 
@@ -14,83 +16,136 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory approval queue (swap with Supabase in prod)
-approval_queue: dict = {}
-workflows: list = []
+# In-memory stores. Replace with a real database in production.
+approval_queue: dict[str, dict] = {}
+workflows: list[dict] = []
 
-# ── SCHEMAS ──────────────────────────────────────────────────────────────────
 
 class UserRequest(BaseModel):
-    text: str  # voice transcript or typed input
+    text: str
+
 
 class ApprovalAction(BaseModel):
-    action: str  # "approve" | "reject" | "edit"
+    action: str  # approve | reject | edit
     edited_payload: dict | None = None
 
-# ── ROUTES ───────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 
 @app.post("/ask")
-async def ask(req: UserRequest):
-    """Main endpoint — processes voice/text input through CrewAI."""
+async def ask(req: UserRequest) -> dict:
     result = run_flowdesk(req.text)
 
-    # Parse pending approvals from agent output
-    pending = extract_pending_approvals(result["result"])
-    for item in pending:
+    new_approvals = []
+    for item in result.get("pending_approvals", []):
         aid = str(uuid.uuid4())[:8]
-        approval_queue[aid] = {
+        approval = {
             "id": aid,
             "payload": item,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        approval_queue[aid] = approval
+        new_approvals.append(approval)
+
+    workflow = result.get("workflow")
+    if workflow:
+        saved = {
+            "id": workflow.get("name", str(uuid.uuid4())[:8]),
+            "name": workflow.get("name"),
+            "trigger": workflow.get("trigger"),
+            "condition": workflow.get("condition"),
+            "action": workflow.get("action"),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        workflows.append(saved)
 
     return {
-        "summary": result["result"],
-        "pending_approvals": list(approval_queue.values()),
+        "route": result.get("route"),
+        "action_taken": result.get("action_taken"),
+        "summary": result.get("summary"),
+        "pending_approvals": [v for v in approval_queue.values() if v["status"] == "pending"],
+        "new_pending_approvals": new_approvals,
         "workflows": workflows,
+        "tool_outputs": result.get("tool_outputs", []),
+        "llm": result.get("llm", {}),
     }
 
+
 @app.get("/approvals")
-async def get_approvals():
+async def get_approvals() -> dict:
     return {"approvals": [v for v in approval_queue.values() if v["status"] == "pending"]}
 
+
 @app.post("/approvals/{approval_id}")
-async def handle_approval(approval_id: str, action: ApprovalAction):
+async def handle_approval(approval_id: str, action: ApprovalAction) -> dict:
     if approval_id not in approval_queue:
         raise HTTPException(status_code=404, detail="Approval not found")
 
     item = approval_queue[approval_id]
+    payload = action.edited_payload or item["payload"]
+
     if action.action == "approve":
         item["status"] = "approved"
-        # TODO: trigger actual execution (Gmail send, Calendar create, etc.)
-        return {"message": "Executed", "item": item}
-    elif action.action == "reject":
+        item["executed_at"] = datetime.now(timezone.utc).isoformat()
+        return {
+            "message": "Approved and executed",
+            "item": item,
+            "execution_result": _simulate_execution(payload),
+        }
+
+    if action.action == "reject":
         item["status"] = "rejected"
-        return {"message": "Rejected"}
-    elif action.action == "edit":
-        item["payload"] = action.edited_payload
+        item["rejected_at"] = datetime.now(timezone.utc).isoformat()
+        return {"message": "Rejected", "item": item}
+
+    if action.action == "edit":
+        item["payload"] = payload
         item["status"] = "approved"
-        return {"message": "Edited and executed", "item": item}
+        item["executed_at"] = datetime.now(timezone.utc).isoformat()
+        return {
+            "message": "Edited, approved, and executed",
+            "item": item,
+            "execution_result": _simulate_execution(payload),
+        }
+
+    raise HTTPException(status_code=400, detail="Invalid action")
+
 
 @app.get("/workflows")
-async def get_workflows():
+async def get_workflows() -> dict:
     return {"workflows": workflows}
 
+
 @app.delete("/workflows/{workflow_id}")
-async def delete_workflow(workflow_id: str):
+async def delete_workflow(workflow_id: str) -> dict:
     global workflows
     workflows = [w for w in workflows if w["id"] != workflow_id]
     return {"message": "Deleted"}
 
-# ── HELPERS ──────────────────────────────────────────────────────────────────
 
-def extract_pending_approvals(agent_output: str) -> list:
-    """Parse PENDING_APPROVAL tags from agent output."""
-    import re
-    items = re.findall(r"\[PENDING_APPROVAL\](.*?)(?=\[|$)", agent_output)
-    return [{"raw": item.strip()} for item in items]
+def _simulate_execution(payload: dict) -> dict:
+    tool_name = payload.get("tool")
+
+    if tool_name == "gmail_send":
+        return {
+            "tool": tool_name,
+            "status": "stub",
+            "message": f"Would send email to {payload.get('to')!r} with subject {payload.get('subject')!r}.",
+        }
+    if tool_name == "calendar_create":
+        return {
+            "tool": tool_name,
+            "status": "stub",
+            "message": f"Would create event {payload.get('title')!r} at {payload.get('when')!r}.",
+        }
+    return {"tool": tool_name or "unknown", "status": "stub", "message": "No live integration is configured yet."}
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8080)
