@@ -5,9 +5,9 @@ import os
 
 # Connect CrewAI to vLLM (OpenAI-compatible)
 llm = ChatOpenAI(
-    model="deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-    base_url="http://localhost:8000/v1",
-    api_key="token-amd-flowdesk",
+    model="llama3.1:8b",
+    base_url="http://localhost:11434/v1",
+    api_key="ollama",
     temperature=0.1,
 )
 
