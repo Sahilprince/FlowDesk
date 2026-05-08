@@ -23,12 +23,14 @@ def get_google_calendar_connection_status() -> dict[str, Any]:
         "label": "Google Calendar",
         "state": state,
         "auth_type": "google_oauth",
+        "provider": "google",
         "configured": configured,
         "token_present": token_present,
         "scopes": [
             "https://www.googleapis.com/auth/calendar.readonly",
             "https://www.googleapis.com/auth/calendar.events",
         ],
+        "connectable": configured,
         "next_step": next_step,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

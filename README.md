@@ -119,6 +119,7 @@ export FLOWDESK_LLM_MODEL=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
 export FLOWDESK_LLM_BASE_URL=http://localhost:8000/v1
 export FLOWDESK_LLM_API_KEY=unused
 export FLOWDESK_LLM_PORT=8000
+export FLOWDESK_APP_URL=http://YOUR_DROPLET_IP:5173
 ```
 
 Google connection scaffolding:
@@ -126,9 +127,18 @@ Google connection scaffolding:
 ```bash
 export GOOGLE_CLIENT_ID=your-google-client-id
 export GOOGLE_CLIENT_SECRET=your-google-client-secret
-export GOOGLE_REDIRECT_URI=http://localhost:8080/oauth/google/callback
+export GOOGLE_REDIRECT_URI=http://YOUR_DROPLET_IP:8080/oauth/google/callback
 export GOOGLE_GMAIL_REFRESH_TOKEN=replace-after-oauth
 export GOOGLE_CALENDAR_REFRESH_TOKEN=replace-after-oauth
+```
+
+GitHub connection scaffolding:
+
+```bash
+export GITHUB_CLIENT_ID=your-github-client-id
+export GITHUB_CLIENT_SECRET=your-github-client-secret
+export GITHUB_REDIRECT_URI=http://YOUR_DROPLET_IP:8080/oauth/github/callback
+export GITHUB_ACCESS_TOKEN=replace-after-oauth
 ```
 
 ## Integration Architecture
@@ -152,6 +162,25 @@ Service integrations now live in adapter files instead of being hardcoded into t
   - keep approvals and workflows visible beside chat
 
 The next production step is to add real Google OAuth start/callback endpoints and exchange the authorization code for refresh tokens.
+
+## End-User Connect Flow
+
+The Connections panel now supports clickable OAuth flows for Gmail, Google Calendar, and GitHub.
+
+How it works:
+
+1. User clicks `Connect` in the sidebar.
+2. FlowDesk redirects the user to Google or GitHub.
+3. The provider redirects back to:
+   - `/oauth/google/callback`
+   - `/oauth/github/callback`
+4. FlowDesk stores the returned token values into the droplet `.env` automatically.
+5. The user is redirected back to the frontend and the connection state refreshes.
+
+Provider app settings must allow these callback URLs:
+
+- `http://YOUR_DROPLET_IP:8080/oauth/google/callback`
+- `http://YOUR_DROPLET_IP:8080/oauth/github/callback`
 
 ## Next Step To Make It Real
 

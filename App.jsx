@@ -56,6 +56,8 @@ function WorkflowChip({ wf, onDelete }) {
 function ConnectionCard({ item }) {
   const connected = item.state === "connected";
   const planned = item.state === "planned";
+  const canConnect = item.connectable && !connected && !planned;
+  const connectHref = `${API}/connections/${item.service}/authorize?return_to=${encodeURIComponent(window.location.href.split("?")[0])}`;
 
   return (
     <div style={styles.card}>
@@ -74,6 +76,11 @@ function ConnectionCard({ item }) {
         <span>{item.auth_type}</span>
         <span>{item.service}</span>
       </div>
+      {canConnect && (
+        <a style={styles.connectBtn} href={connectHref}>
+          Connect
+        </a>
+      )}
     </div>
   );
 }
@@ -94,17 +101,28 @@ export default function FlowDesk() {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
+  const loadConnections = () => {
+    fetch(`${API}/connections`)
+      .then(res => res.json())
+      .then(data => setConnections(data.connections || []))
+      .catch(() => {});
+  };
+
   const { listening, start, stop } = useVoice((transcript) => {
     setInput(transcript);
     handleSend(transcript);
   });
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { loadConnections(); }, []);
   useEffect(() => {
-    fetch(`${API}/connections`)
-      .then(res => res.json())
-      .then(data => setConnections(data.connections || []))
-      .catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    if (connected) {
+      loadConnections();
+      setMessages(m => [...m, { role: "assistant", text: `${connected} connected successfully.` }]);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   const handleSend = async (text) => {
@@ -237,6 +255,7 @@ const styles = {
   connectionName: { fontSize: 13, fontWeight: 700, color: "#e2e8f0" },
   connectionState: { fontSize: 10, padding: "4px 8px", borderRadius: 999, textTransform: "uppercase", letterSpacing: 1 },
   connectionMeta: { display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, color: "#64748b" },
+  connectBtn: { display: "inline-block", marginTop: 10, padding: "8px 12px", background: "#2563eb", color: "#fff", borderRadius: 8, textDecoration: "none", fontSize: 12, fontWeight: 700 },
   btnApprove: { flex: 1, padding: "6px 0", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12 },
   btnReject: { flex: 1, padding: "6px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12 },
   chip: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#13132a", border: "1px solid #2d2d6b", borderRadius: 20, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "#a5b4fc" },
