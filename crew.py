@@ -4,6 +4,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from integrations import (
+    get_gmail_connection_status,
+    get_google_calendar_connection_status,
+    gmail_read_messages,
+    gmail_send_message,
+    google_calendar_create_event,
+    google_calendar_read_events,
+)
+
 try:
     from crewai_tools import tool as crewai_tool
 except ImportError:
@@ -30,47 +39,25 @@ FLOWDESK_LLM_API_KEY = os.getenv("FLOWDESK_LLM_API_KEY", "unused")
 @tool("gmail_read")
 def gmail_read(query: str) -> dict[str, Any]:
     """Read emails from Gmail matching a query."""
-    return {
-        "tool": "gmail_read",
-        "query": query,
-        "status": "stub",
-        "message": "Gmail is not connected yet. Replace this stub with a Gmail or MCP connector.",
-    }
+    return gmail_read_messages(query)
 
 
 @tool("gmail_send")
 def gmail_send(to: str, subject: str, body: str) -> dict[str, Any]:
     """Draft and queue a Gmail email for approval."""
-    return {
-        "tool": "gmail_send",
-        "to": to,
-        "subject": subject,
-        "body": body,
-        "requires_approval": True,
-    }
+    return gmail_send_message(to=to, subject=subject, body=body)
 
 
 @tool("calendar_read")
 def calendar_read(date_range: str) -> dict[str, Any]:
     """Read calendar events for a date range."""
-    return {
-        "tool": "calendar_read",
-        "date_range": date_range,
-        "status": "stub",
-        "message": "Calendar is not connected yet. Replace this stub with a calendar connector.",
-    }
+    return google_calendar_read_events(date_range)
 
 
 @tool("calendar_create")
 def calendar_create(title: str, when: str, attendees: str) -> dict[str, Any]:
     """Queue a calendar event creation for approval."""
-    return {
-        "tool": "calendar_create",
-        "title": title,
-        "when": when,
-        "attendees": attendees,
-        "requires_approval": True,
-    }
+    return google_calendar_create_event(title=title, when=when, attendees=attendees)
 
 
 @tool("save_workflow")
@@ -150,10 +137,28 @@ def _calendar_range_for_text(user_input: str) -> str:
 
 
 def _extract_email_fields(user_input: str) -> tuple[str, str, str]:
-    match = re.search(r"send (.+?) an email(?: to)? (.+?)(?: about| subject)? (.+)", user_input, re.I)
-    if match:
-        body, to, subject = match.groups()
-        return to.strip(), subject.strip(), body.strip()
+    patterns = [
+        re.compile(
+            r"send\s+(?P<to>.+?)\s+an email\s+about\s+(?P<subject>.+)",
+            re.I,
+        ),
+        re.compile(
+            r"send\s+an email\s+to\s+(?P<to>.+?)\s+about\s+(?P<subject>.+)",
+            re.I,
+        ),
+        re.compile(
+            r"email\s+(?P<to>.+?)\s+about\s+(?P<subject>.+)",
+            re.I,
+        ),
+    ]
+
+    for pattern in patterns:
+        match = pattern.search(user_input)
+        if match:
+            to = match.group("to").strip()
+            subject = match.group("subject").strip()
+            body = subject
+            return to, subject, body
 
     return "unknown@example.com", "Follow up", user_input.strip()
 
@@ -311,4 +316,8 @@ def run_flowdesk(user_input: str) -> dict[str, Any]:
         "model": FLOWDESK_LLM_MODEL,
         "api_key_configured": bool(FLOWDESK_LLM_API_KEY),
     }
+    result["connections"] = [
+        get_gmail_connection_status(),
+        get_google_calendar_connection_status(),
+    ]
     return result

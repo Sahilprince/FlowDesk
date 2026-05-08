@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from crew import run_flowdesk
+from integrations import get_gmail_connection_status, get_google_calendar_connection_status
 
 app = FastAPI(title="FlowDesk API")
 
@@ -21,6 +22,31 @@ approval_queue: dict[str, dict] = {}
 workflows: list[dict] = []
 
 
+def get_connection_catalog() -> list[dict]:
+    return [
+        get_gmail_connection_status(),
+        get_google_calendar_connection_status(),
+        {
+            "service": "slack",
+            "label": "Slack",
+            "state": "planned",
+            "auth_type": "oauth",
+            "configured": False,
+            "token_present": False,
+            "next_step": "Add a Slack adapter and bot token wiring.",
+        },
+        {
+            "service": "notion",
+            "label": "Notion",
+            "state": "planned",
+            "auth_type": "oauth",
+            "configured": False,
+            "token_present": False,
+            "next_step": "Add a Notion adapter and integration token wiring.",
+        },
+    ]
+
+
 class UserRequest(BaseModel):
     text: str
 
@@ -32,7 +58,11 @@ class ApprovalAction(BaseModel):
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "connections": get_connection_catalog(),
+    }
 
 
 @app.post("/ask")
@@ -72,7 +102,13 @@ async def ask(req: UserRequest) -> dict:
         "workflows": workflows,
         "tool_outputs": result.get("tool_outputs", []),
         "llm": result.get("llm", {}),
+        "connections": result.get("connections", get_connection_catalog()),
     }
+
+
+@app.get("/connections")
+async def get_connections() -> dict:
+    return {"connections": get_connection_catalog()}
 
 
 @app.get("/approvals")

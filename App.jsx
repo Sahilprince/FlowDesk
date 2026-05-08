@@ -53,6 +53,31 @@ function WorkflowChip({ wf, onDelete }) {
   );
 }
 
+function ConnectionCard({ item }) {
+  const connected = item.state === "connected";
+  const planned = item.state === "planned";
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.connectionHeader}>
+        <div style={styles.connectionName}>{item.label}</div>
+        <div style={{
+          ...styles.connectionState,
+          background: connected ? "#052e1a" : planned ? "#2a1c08" : "#2a1020",
+          color: connected ? "#86efac" : planned ? "#fcd34d" : "#fda4af",
+        }}>
+          {connected ? "Connected" : planned ? "Planned" : "Not Connected"}
+        </div>
+      </div>
+      <p style={styles.cardText}>{item.next_step || "Ready."}</p>
+      <div style={styles.connectionMeta}>
+        <span>{item.auth_type}</span>
+        <span>{item.service}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ─────────────────────────────────────────────────────────────────
 
 export default function FlowDesk() {
@@ -65,6 +90,7 @@ export default function FlowDesk() {
   ]);
   const [approvals, setApprovals] = useState([]);
   const [workflows, setWorkflows] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
@@ -74,6 +100,12 @@ export default function FlowDesk() {
   });
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    fetch(`${API}/connections`)
+      .then(res => res.json())
+      .then(data => setConnections(data.connections || []))
+      .catch(() => {});
+  }, []);
 
   const handleSend = async (text) => {
     const msg = text || input;
@@ -93,6 +125,7 @@ export default function FlowDesk() {
       setMessages(m => [...m, { role: "assistant", text: reply }]);
       setApprovals(data.pending_approvals || []);
       setWorkflows(data.workflows || []);
+      setConnections(data.connections || []);
       speak(reply.slice(0, 200));
     } catch {
       setMessages(m => [...m, { role: "assistant", text: "Backend offline. Start the FastAPI server on port 8080." }]);
@@ -126,6 +159,14 @@ export default function FlowDesk() {
           {approvals.length === 0
             ? <p style={styles.empty}>All clear</p>
             : approvals.map(a => <ApprovalCard key={a.id} item={a} onAction={handleApproval} />)
+          }
+        </section>
+
+        <section style={styles.section}>
+          <div style={styles.sectionTitle}>CONNECTIONS</div>
+          {connections.length === 0
+            ? <p style={styles.empty}>No services loaded</p>
+            : connections.map(c => <ConnectionCard key={c.service} item={c} />)
           }
         </section>
 
@@ -192,6 +233,10 @@ const styles = {
   cardBadge: { fontSize: 10, color: "#fbbf24", marginBottom: 6 },
   cardText: { fontSize: 12, color: "#a5b4fc", margin: "0 0 10px 0", lineHeight: 1.5 },
   cardActions: { display: "flex", gap: 8 },
+  connectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 },
+  connectionName: { fontSize: 13, fontWeight: 700, color: "#e2e8f0" },
+  connectionState: { fontSize: 10, padding: "4px 8px", borderRadius: 999, textTransform: "uppercase", letterSpacing: 1 },
+  connectionMeta: { display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, color: "#64748b" },
   btnApprove: { flex: 1, padding: "6px 0", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12 },
   btnReject: { flex: 1, padding: "6px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 12 },
   chip: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#13132a", border: "1px solid #2d2d6b", borderRadius: 20, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "#a5b4fc" },

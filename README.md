@@ -32,6 +32,8 @@ The original repo depended on free-form LLM output for this control flow. That c
 
 - [crew.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/crew.py): Intent routing and task execution logic
 - [main.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/main.py): FastAPI API and approval queue
+- [integrations/gmail.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/integrations/gmail.py): Gmail adapter and connection status
+- [integrations/google_calendar.py](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/integrations/google_calendar.py): Calendar adapter and connection status
 - [App.jsx](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/App.jsx): React UI
 - [main.jsx](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/main.jsx): React entrypoint
 - [serve.sh](/mnt/d/Coding/Projects/AgenticAI/FlowDesk/serve.sh): AMD/vLLM server launcher
@@ -118,6 +120,38 @@ export FLOWDESK_LLM_BASE_URL=http://localhost:8000/v1
 export FLOWDESK_LLM_API_KEY=unused
 export FLOWDESK_LLM_PORT=8000
 ```
+
+Google connection scaffolding:
+
+```bash
+export GOOGLE_CLIENT_ID=your-google-client-id
+export GOOGLE_CLIENT_SECRET=your-google-client-secret
+export GOOGLE_REDIRECT_URI=http://localhost:8080/oauth/google/callback
+export GOOGLE_GMAIL_REFRESH_TOKEN=replace-after-oauth
+export GOOGLE_CALENDAR_REFRESH_TOKEN=replace-after-oauth
+```
+
+## Integration Architecture
+
+Service integrations now live in adapter files instead of being hardcoded into the UI or route handlers.
+
+- `integrations/gmail.py`
+  - expose Gmail connection status
+  - implement Gmail read and send calls
+- `integrations/google_calendar.py`
+  - expose Calendar connection status
+  - implement Calendar read and create calls
+- `crew.py`
+  - call adapter functions
+  - keep intent routing and approval behavior
+- `main.py`
+  - expose `/connections`
+  - return connection state to the UI
+- `App.jsx`
+  - show a Connections panel
+  - keep approvals and workflows visible beside chat
+
+The next production step is to add real Google OAuth start/callback endpoints and exchange the authorization code for refresh tokens.
 
 ## Next Step To Make It Real
 
