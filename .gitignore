@@ -1,0 +1,6 @@
+.venv
+files.zip
+__pycache__/
+*.pyc
+AMD_developer_cloud
+AMD_developer_cloud.pub
